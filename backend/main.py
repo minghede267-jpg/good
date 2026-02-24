@@ -1,14 +1,17 @@
+# backend/main.py
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 import os
 import openai
 
-# Railway 环境变量中设置 OPENAI_API_KEY
+# 读取 Render 环境变量里的 Key
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 
+# 初始化 FastAPI
 app = FastAPI()
 
-# 允许跨域访问前端
+# 允许跨域
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,10 +19,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 简单伪 free 用户次数控制（可拓展）
+# 每天免费次数
 FREE_LIMIT = 20
-user_free_counts = {}  # 记录每个 session/ip 当天次数
+user_free_counts = {}
 
+# 🔹 首页返回前端聊天页面
+@app.get("/")
+def home():
+    return FileResponse("index.html")
+
+# 🔹 AI 聊天接口
 @app.post("/chat")
 async def chat(req: Request):
     data = await req.json()
@@ -29,15 +38,17 @@ async def chat(req: Request):
     intimacy = data.get("intimacy", 30)
     mood = data.get("mood", "neutral")
 
-    # 免费次数检测
+    # 检查免费次数
     count = user_free_counts.get(session_id, 0)
     if count >= FREE_LIMIT:
-        return {"reply": "今天免费次数用完啦！开通会员解锁更多对话哦～",
-                "affection": affection,
-                "intimacy": intimacy,
-                "mood": mood}
+        return {
+            "reply": "今天免费次数用完啦！开通会员解锁更多对话哦～",
+            "affection": affection,
+            "intimacy": intimacy,
+            "mood": mood
+        }
 
-    # Prompt 构建
+    # 构建 Prompt
     prompt = f"""
 你是星野澪，一个二次元暧昧型女主。
 性格: 傲娇, 暧昧, 会拉扯。
@@ -57,14 +68,14 @@ async def chat(req: Request):
     )
     reply = resp.choices[0].message.content
 
-    # 简单好感度/亲密度逻辑
+    # 简单好感度 / 亲密度算法
     if any(word in message for word in ["喜欢","可爱","爱"]):
         affection += 2
         intimacy += 1
     elif any(word in message for word in ["讨厌","烦"]):
         affection -= 3
 
-    # 限制范围
+    # 限制在 0~100
     affection = max(0, min(100, affection))
     intimacy = max(0, min(100, intimacy))
 
